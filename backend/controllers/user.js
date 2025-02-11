@@ -1,3 +1,4 @@
+const blacklistToken = require("../models/blacklistToken");
 const User  = require("../models/user");
 const {validationResult} = require("express-validator");
 
@@ -18,11 +19,10 @@ exports.registerUser = async (req, res) => {
         const existingUser = await User.findOne({email});
 
         if(existingUser){
-            throw new Error("User already exists");
+            throw new Error("User already exists. Please login");
         }
 
         const hashPassword = await User.hashPassword(password);
-
 
         const user = await User.create({
             email, 
@@ -64,7 +64,7 @@ exports.loginUser = async (req, res) => {
         const user = await User.findOne({email}).select("+password");
 
         if(!user){
-            throw new Error("User does not exist");
+            throw new Error("User does not exist. Please register");
         }
 
         const isMatch = await user.comparePassword(password);
@@ -75,10 +75,47 @@ exports.loginUser = async (req, res) => {
 
         const token = user.generateAuthToken();
 
+        res.cookie("token", token, {maxAge: 30 * 24 * 60 * 60 * 1000});
+
         res.status(200).json({
             message: "User logged in successfully",
             token,
             user
+        });
+
+    }catch(error){
+        res.status(400).json({error: error.message});
+    }
+}
+
+exports.getUserProfile = async (req, res) => {
+    try{
+        const user = req.user;
+
+        res.status(200).json({
+            success: true,
+            user
+        });
+
+    }catch(error){
+        res.status(400).json({error: error.message});
+    }
+}
+
+exports.logoutUser = async (req, res) => {
+    try{
+        res.clearCookie("token");
+
+        const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
+
+        if (!token) {
+            throw new Error("Unauthorized");
+        }
+
+        await blacklistToken.create({token});
+
+        res.status(200).json({
+            message: "User logged out successfully"
         });
 
     }catch(error){
